@@ -3,28 +3,28 @@ import React, { useEffect, useState } from "react";
 const App: React.FC = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
+  const [gisLoaded, setGisLoaded] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string;
   const SCOPES = "https://www.googleapis.com/auth/drive.readonly";
 
-  // Load gapi + picker
+  // Load gapi client and picker; detect Google Identity Services
   useEffect(() => {
     const loadScript = () => {
-      if ((window as any).gapi) {
-        (window as any).gapi.load("client:auth2", async () => {
-          await (window as any).gapi.client.init({
-            apiKey: API_KEY,
-            clientId: CLIENT_ID,
-            scope: SCOPES,
-          });
+      const gapi = (window as any).gapi;
+      if (gapi) {
+        gapi.load("client", async () => {
+          await gapi.client.init({ apiKey: API_KEY });
           setGapiLoaded(true);
         });
+        gapi.load("picker", () => setPickerLoaded(true));
       }
 
-      if ((window as any).google) {
-        setPickerLoaded(true);
+      const googleObj = (window as any).google;
+      if (googleObj && googleObj.accounts && googleObj.accounts.oauth2) {
+        setGisLoaded(true);
       }
     };
 
@@ -32,15 +32,26 @@ const App: React.FC = () => {
   }, []);
 
   const handleAuthClick = async () => {
-    const GoogleAuth = (window as any).gapi.auth2.getAuthInstance();
-    try {
-      const user = await GoogleAuth.signIn();
-      const token = user.getAuthResponse().access_token;
-      console.log("✅ Google Access Token:", token);
-      openPicker(token);
-    } catch (err) {
-      console.error("❌ Auth error", err);
+    if (!gisLoaded) {
+      console.error("Google Identity Services not loaded");
+      return;
     }
+
+    const tokenClient = (window as any).google.accounts.oauth2.initTokenClient({
+      client_id: CLIENT_ID,
+      scope: SCOPES,
+      callback: (response: any) => {
+        if (response.error) {
+          console.error("❌ Token error", response);
+          return;
+        }
+        const token = response.access_token;
+        console.log("✅ Google Access Token:", token);
+        openPicker(token);
+      },
+    });
+
+    tokenClient.requestAccessToken({ prompt: "consent" });
   };
 
   const openPicker = (accessToken: string) => {
@@ -77,10 +88,10 @@ const App: React.FC = () => {
 
       <button
         onClick={handleAuthClick}
-        disabled={!gapiLoaded || !pickerLoaded}
+        disabled={!gapiLoaded || !pickerLoaded || !gisLoaded}
         className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 disabled:opacity-50"
       >
-        {gapiLoaded && pickerLoaded
+        {gapiLoaded && pickerLoaded && gisLoaded
           ? "Pick a File from Google Drive"
           : "Loading..."}
       </button>
