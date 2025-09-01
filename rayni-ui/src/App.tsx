@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from "react";
 import FileUpload from "./FileUpload";
 import PdfViewer from "./PdfViewer";
+import Chat from "./Chat";
 
 type Doc = {
   id: string;
@@ -10,15 +11,24 @@ type Doc = {
   mimeType: string;
   size?: number;
   url?: string;
+  page?: number; // support citations
 };
+
+type Project = { id: string; name: string };
+type Instrument = { id: string; name: string; projectId: string };
 
 const App: React.FC = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
+
   const [uploadedDocs, setUploadedDocs] = useState<Doc[]>([]);
   const [selectedDoc, setSelectedDoc] = useState<Doc | null>(null);
-  const [messages, setMessages] = useState<{ role: "user" | "ai"; text: string }[]>([]);
+
+  const [projects, setProjects] = useState<Project[]>([]);
+  const [instruments, setInstruments] = useState<Instrument[]>([]);
+  const [selectedProject, setSelectedProject] = useState<string>("");
+  const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string;
@@ -43,6 +53,18 @@ const App: React.FC = () => {
     };
 
     loadScript();
+
+    // Mock seed data for now (replace with API later)
+    setProjects([
+      { id: "p1", name: "Project X – Protein Yield" },
+      { id: "p2", name: "Project Y – Low Signal Study" },
+    ]);
+    setInstruments([
+      { id: "i1", name: "HPLC", projectId: "p1" },
+      { id: "i2", name: "LC-MS", projectId: "p1" },
+      { id: "i3", name: "Microscope", projectId: "p2" },
+      { id: "i4", name: "Mass Spectrometer", projectId: "p2" },
+    ]);
   }, []);
 
   // --- Google Auth + Picker ---
@@ -99,7 +121,11 @@ const App: React.FC = () => {
         source: "google-drive" as const,
         mimeType: doc.mimeType,
         size: doc.sizeBytes,
-        url: doc.url || doc.embedUrl || doc.webViewLink,
+        url:
+          doc.url ||
+          doc.embedUrl ||
+          doc.webViewLink ||
+          `https://drive.google.com/uc?id=${doc.id}&export=download`,
       }));
       setUploadedDocs((prev) => [...prev, ...driveDocs]);
     }
@@ -112,27 +138,19 @@ const App: React.FC = () => {
       name: file.name,
       status: "Local file",
       source: "local" as const,
-      mimeType: file.type,
-      size: file.size,
-      url: file.url,
+      mimeType: (file as any).type || "application/octet-stream",
+      size: (file as any).size,
+      url: (file as any).url,
     }));
     setUploadedDocs((prev) => [...prev, ...localDocs]);
   };
 
-  // --- Chat Handler (Mock) ---
-  const handleSendMessage = (text: string) => {
-    if (!text.trim()) return;
-    const newMsg = { role: "user" as const, text };
-    setMessages((prev) => [...prev, newMsg]);
-
-    // Mock AI reply
-    setTimeout(() => {
-      const aiMsg = {
-        role: "ai" as const,
-        text: `AI (mock): You said "${text}". Context → Docs=${uploadedDocs.length}`,
-      };
-      setMessages((prev) => [...prev, aiMsg]);
-    }, 800);
+  // --- Citation Handler ---
+  const handleOpenCitation = (docId: string, page?: number) => {
+    const doc = uploadedDocs.find((d) => d.id === docId);
+    if (doc) {
+      setSelectedDoc({ ...doc, page });
+    }
   };
 
   return (
@@ -168,61 +186,61 @@ const App: React.FC = () => {
         </ul>
       </div>
 
-      {/* Center: Chat */}
+      {/* Center: Project/Instrument Selector + Chat */}
       <div className="flex flex-col w-3/5 border-r">
         <div className="flex items-center justify-between p-3 border-b bg-white">
           <div className="space-x-2">
             <button className="px-3 py-1 bg-blue-600 text-white rounded">
               New Chat
             </button>
-            <span className="text-gray-600">Needle Puncture</span>
+            <select
+              value={selectedProject}
+              onChange={(e) => {
+                setSelectedProject(e.target.value);
+                setSelectedInstruments([]);
+              }}
+              className="border px-2 py-1 rounded"
+            >
+              <option value="">Select Project</option>
+              {projects.map((p) => (
+                <option key={p.id} value={p.id}>
+                  {p.name}
+                </option>
+              ))}
+            </select>
+            {selectedProject && (
+              <select
+                multiple
+                value={selectedInstruments}
+                onChange={(e) =>
+                  setSelectedInstruments(
+                    Array.from(e.target.selectedOptions, (opt) => opt.value)
+                  )
+                }
+                className="border px-2 py-1 rounded"
+              >
+                {instruments
+                  .filter((i) => i.projectId === selectedProject)
+                  .map((i) => (
+                    <option key={i.id} value={i.id}>
+                      {i.name}
+                    </option>
+                  ))}
+              </select>
+            )}
           </div>
           <button className="px-3 py-1 border rounded text-sm">
             Save Chat as Note
           </button>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
-          {messages.map((msg, idx) => (
-            <div
-              key={idx}
-              className={`p-3 rounded-lg max-w-lg ${
-                msg.role === "user"
-                  ? "bg-blue-500 text-white ml-auto"
-                  : "bg-gray-100 text-gray-800"
-              }`}
-            >
-              {msg.text}
-            </div>
-          ))}
-        </div>
-
-        <div className="p-3 border-t bg-white flex space-x-2">
-          <input
-            type="text"
-            placeholder="Ask something..."
-            className="flex-1 border rounded px-3 py-2"
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleSendMessage((e.target as HTMLInputElement).value);
-                (e.target as HTMLInputElement).value = "";
-              }
-            }}
+        <div className="flex-1 overflow-y-auto p-4">
+          <Chat
+            projectId={selectedProject}
+            instrumentIds={selectedInstruments}
+            docs={uploadedDocs}
+            onOpenCitation={handleOpenCitation}
           />
-          <button
-            onClick={() => {
-              const input = document.querySelector<HTMLInputElement>(
-                "input[placeholder='Ask something...']"
-              );
-              if (input) {
-                handleSendMessage(input.value);
-                input.value = "";
-              }
-            }}
-            className="px-4 py-2 bg-blue-600 text-white rounded"
-          >
-            Send
-          </button>
         </div>
       </div>
 
@@ -230,12 +248,19 @@ const App: React.FC = () => {
       <div className="w-1/5 p-4 bg-white">
         <h2 className="font-semibold mb-3">Preview</h2>
         {selectedDoc ? (
-          selectedDoc.mimeType === "application/pdf" ? (
+          selectedDoc.mimeType === "application/pdf" ||
+          selectedDoc.mimeType.startsWith("image/") ? (
             <div className="h-[80vh] overflow-y-auto border">
-              <PdfViewer fileUrl={selectedDoc.url || "/test.pdf"} />
+              <PdfViewer
+                fileUrl={selectedDoc.url || "/test.pdf"}
+                mimeType={selectedDoc.mimeType}
+                page={selectedDoc.page}
+              />
             </div>
           ) : (
-            <div className="text-gray-600 text-sm">Preview not available</div>
+            <div className="text-gray-600 text-sm">
+              Preview not available for this file type.
+            </div>
           )
         ) : (
           <p className="text-gray-400 text-sm">Select a document to preview</p>

@@ -1,5 +1,5 @@
 import { Document, Page, pdfjs } from "react-pdf";
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import "react-pdf/dist/Page/TextLayer.css";
 import "react-pdf/dist/Page/AnnotationLayer.css";
 
@@ -9,18 +9,30 @@ pdfjs.GlobalWorkerOptions.workerSrc = workerSrc;
 
 type PdfViewerProps = {
   fileUrl: string;
-  mimeType?: string; // <-- NEW: helps decide PDF vs image
+  mimeType?: string;
   alt?: string;
   className?: string;
+  page?: number; // NEW: allows citations to jump to a page
 };
 
-export default function PdfViewer({ fileUrl, mimeType, alt, className }: PdfViewerProps) {
+export default function PdfViewer({
+  fileUrl,
+  mimeType,
+  alt,
+  className,
+  page,
+}: PdfViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState<number>(page ?? 1);
+
+  // Reset page when file changes
+  useEffect(() => {
+    setCurrentPage(page ?? 1);
+  }, [fileUrl, page]);
 
   const isImage = useMemo(() => {
     if (mimeType?.startsWith("image/")) return true;
-    // Fallback on extension if mimeType not provided
     return /\.(png|jpe?g|gif|webp|bmp|svg)$/i.test(fileUrl);
   }, [fileUrl, mimeType]);
 
@@ -30,23 +42,22 @@ export default function PdfViewer({ fileUrl, mimeType, alt, className }: PdfView
   }, [fileUrl, mimeType]);
 
   if (isImage && !isPdf) {
-    // Render image preview directly
+    // Render image preview
     return (
       <div className={className}>
-        {/* Use referrerPolicy to avoid Drive blocking previews in some cases */}
         <img
           src={fileUrl}
           alt={alt || "Selected image"}
           referrerPolicy="no-referrer"
           style={{ maxWidth: "100%", height: "auto", display: "block" }}
-          onError={(e) => setError("Failed to load image.")}
+          onError={() => setError("Failed to load image.")}
         />
         {error && <p className="mt-2 text-sm text-red-600">{error}</p>}
       </div>
     );
   }
 
-  // Default: try as PDF (react-pdf gracefully errors if not a PDF)
+  // Default: PDF
   return (
     <div className={className}>
       <Document
@@ -58,20 +69,37 @@ export default function PdfViewer({ fileUrl, mimeType, alt, className }: PdfView
         onLoadError={(e) => setError(String(e))}
         onSourceError={(e) => setError(String(e))}
         options={{
-          // Helps with cross-origin Drive blobs sometimes
           cMapUrl: "/cmaps/",
           cMapPacked: true,
         }}
       >
-        {Array.from({ length: numPages }, (_, i) => (
-          <Page key={`page_${i + 1}`} pageNumber={i + 1} />
-        ))}
+        <Page pageNumber={currentPage} />
       </Document>
 
+      {numPages > 1 && (
+        <div className="flex justify-center items-center gap-4 mt-2 text-sm">
+          <button
+            disabled={currentPage <= 1}
+            onClick={() => setCurrentPage((p) => Math.max(p - 1, 1))}
+            className="px-2 py-1 border rounded disabled:opacity-50"
+          >
+            Prev
+          </button>
+          <span>
+            Page {currentPage} of {numPages}
+          </span>
+          <button
+            disabled={currentPage >= numPages}
+            onClick={() => setCurrentPage((p) => Math.min(p + 1, numPages))}
+            className="px-2 py-1 border rounded disabled:opacity-50"
+          >
+            Next
+          </button>
+        </div>
+      )}
+
       {error && (
-        <p className="mt-2 text-sm text-red-600">
-          Failed to load PDF: {error}
-        </p>
+        <p className="mt-2 text-sm text-red-600">Failed to load PDF: {error}</p>
       )}
     </div>
   );
