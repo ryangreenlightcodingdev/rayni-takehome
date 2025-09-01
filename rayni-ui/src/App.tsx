@@ -1,5 +1,7 @@
 import React, { useEffect, useState } from "react";
 import FileUpload from "./FileUpload";
+import PreviewModal from "./PreviewModal";
+import PdfViewer from "./PdfViewer";
 
 const App: React.FC = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
@@ -7,6 +9,7 @@ const App: React.FC = () => {
   const [gisLoaded, setGisLoaded] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
   const [uploadedDocs, setUploadedDocs] = useState<any[]>([]);
+  const [previewFile, setPreviewFile] = useState<any | null>(null);
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string;
@@ -79,8 +82,20 @@ const App: React.FC = () => {
   const pickerCallback = (data: any) => {
     if (data.action === (window as any).google.picker.Action.PICKED) {
       const docs = data.docs;
-      console.log("✅ Files selected:", docs);
-      setSelectedFiles(docs);
+      console.log("✅ Files selected from Google Drive:", docs);
+      
+      // Convert Google Drive docs to match uploaded docs format and add to unified list
+      const driveDocs = docs.map((doc: any) => ({
+        id: doc.id,
+        name: doc.name,
+        status: 'Selected from Google Drive',
+        source: 'google-drive',
+        mimeType: doc.mimeType,
+        size: doc.sizeBytes
+      }));
+      
+      setUploadedDocs((prev) => [...prev, ...driveDocs]);
+      setSelectedFiles(docs); // Keep for backward compatibility
     }
   };
 
@@ -91,6 +106,12 @@ const App: React.FC = () => {
   return (
     <div className="p-6 max-w-2xl mx-auto">
       <h1 className="text-xl font-bold mb-4">Google Drive Integration + File Upload</h1>
+
+      {/* PDF Preview Test */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-2">PDF Preview Test</h2>
+        <PdfViewer fileUrl="/example.pdf" />
+      </div>
 
       {/* File Upload */}
       <FileUpload onFilesUploaded={handleFilesUploaded} />
@@ -106,36 +127,53 @@ const App: React.FC = () => {
             ? "Pick a File from Google Drive"
             : "Loading..."}
         </button>
+      </div>
 
-        {selectedFiles.length > 0 && (
-          <div className="mt-4">
-            <h2 className="text-lg font-semibold mb-2">Selected from Google Drive</h2>
-            <ul className="space-y-2">
-              {selectedFiles.map((file, idx) => (
-                <li
-                  key={idx}
-                  className="p-2 border rounded bg-white"
-                >
-                  📄 {file.name} <br />
-                  <span className="text-sm text-gray-500">{file.id}</span>
-                </li>
-              ))}
-            </ul>
-          </div>
+      {/* Show unified uploaded docs list */}
+      <div className="mt-6">
+        <h2 className="text-lg font-semibold mb-2">All Documents</h2>
+        {uploadedDocs.length === 0 ? (
+          <p className="text-gray-500 text-center py-4">No documents yet. Upload files or pick from Google Drive.</p>
+        ) : (
+          <ul className="space-y-2">
+            {uploadedDocs.map((doc, index) => (
+              <li 
+                key={`${doc.source}-${doc.id || index}`} 
+                className="p-3 border rounded bg-white cursor-pointer hover:bg-gray-100 transition-colors"
+                onClick={() => setPreviewFile({ 
+                  name: doc.name, 
+                  url: doc.url || doc.downloadUrl || doc.webViewLink, 
+                  type: doc.mimeType || doc.type 
+                })}
+              >
+                <div className="flex items-center justify-between">
+                  <div>
+                    <span className="font-medium">{doc.name}</span>
+                    <span className="ml-2 text-sm text-gray-500">({doc.status})</span>
+                  </div>
+                  <div className="flex items-center space-x-2">
+                    <span className="text-xs text-gray-400">
+                      {doc.source === 'google-drive' ? '🌐' : '💾'}
+                    </span>
+                    <span className="text-sm text-blue-600">👁️ Preview</span>
+                  </div>
+                </div>
+                {doc.mimeType && (
+                  <div className="text-xs text-gray-500 mt-1">
+                    Type: {doc.mimeType}
+                    {doc.size && ` • Size: ${(parseInt(doc.size) / 1024).toFixed(1)} KB`}
+                  </div>
+                )}
+              </li>
+            ))}
+          </ul>
         )}
       </div>
 
-      {/* Show uploaded docs */}
-      <div className="mt-6">
-        <h2 className="text-lg font-semibold mb-2">Uploaded Documents</h2>
-        <ul className="space-y-2">
-          {uploadedDocs.map((doc) => (
-            <li key={doc.id} className="p-2 border rounded">
-              {doc.name} - <span>{doc.status}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
+      {/* Preview Modal */}
+      {previewFile && (
+        <PreviewModal file={previewFile} onClose={() => setPreviewFile(null)} />
+      )}
     </div>
   );
 };
