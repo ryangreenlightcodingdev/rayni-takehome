@@ -1,5 +1,6 @@
 // Chat.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
 
 type DocRef = { id: string; page?: number; label?: string };
 type Citation = { label: string; docId: string; page?: number };
@@ -127,8 +128,10 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
             isUser ? "bg-blue-100" : "bg-gray-100"
           } whitespace-pre-wrap`}
         >
-          <div className="text-sm">{m.content}</div>
-
+          {/* <div className="text-sm">{m.content}</div> */}
+          <div className="prose prose-sm max-w-none">
+  <ReactMarkdown>{m.content}</ReactMarkdown>
+</div>
           {/* Citations */}
           {m.citations?.length ? (
             <div className="mt-2 flex gap-2 text-xs">
