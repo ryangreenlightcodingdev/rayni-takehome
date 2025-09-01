@@ -1,10 +1,12 @@
 import React, { useEffect, useState } from "react";
+import FileUpload from "./FileUpload";
 
 const App: React.FC = () => {
   const [gapiLoaded, setGapiLoaded] = useState(false);
   const [pickerLoaded, setPickerLoaded] = useState(false);
   const [gisLoaded, setGisLoaded] = useState(false);
   const [selectedFiles, setSelectedFiles] = useState<any[]>([]);
+  const [uploadedDocs, setUploadedDocs] = useState<any[]>([]);
 
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string;
@@ -82,36 +84,58 @@ const App: React.FC = () => {
     }
   };
 
+  const handleFilesUploaded = (files: any[]) => {
+    setUploadedDocs((prev) => [...prev, ...files]);
+  };
+
   return (
-    <div className="flex flex-col items-center justify-center min-h-screen bg-gray-50">
-      <h1 className="text-2xl font-bold mb-6">Google Drive Integration</h1>
+    <div className="p-6 max-w-2xl mx-auto">
+      <h1 className="text-xl font-bold mb-4">Google Drive Integration + File Upload</h1>
 
-      <button
-        onClick={handleAuthClick}
-        disabled={!gapiLoaded || !pickerLoaded || !gisLoaded}
-        className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 disabled:opacity-50"
-      >
-        {gapiLoaded && pickerLoaded && gisLoaded
-          ? "Pick a File from Google Drive"
-          : "Loading..."}
-      </button>
+      {/* File Upload */}
+      <FileUpload onFilesUploaded={handleFilesUploaded} />
 
-      {selectedFiles.length > 0 && (
-        <div className="mt-8 w-full max-w-lg">
-          <h2 className="text-xl font-semibold mb-4">Selected Files</h2>
-          <ul className="space-y-2">
-            {selectedFiles.map((file, idx) => (
-              <li
-                key={idx}
-                className="p-3 bg-white rounded shadow border border-gray-200"
-              >
-                📄 {file.name} <br />
-                <span className="text-sm text-gray-500">{file.id}</span>
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
+      {/* Google Drive Picker */}
+      <div className="mt-6">
+        <button
+          onClick={handleAuthClick}
+          disabled={!gapiLoaded || !pickerLoaded || !gisLoaded}
+          className="px-6 py-3 bg-blue-600 text-white rounded-lg shadow hover:bg-blue-700 disabled:opacity-50"
+        >
+          {gapiLoaded && pickerLoaded && gisLoaded
+            ? "Pick a File from Google Drive"
+            : "Loading..."}
+        </button>
+
+        {selectedFiles.length > 0 && (
+          <div className="mt-4">
+            <h2 className="text-lg font-semibold mb-2">Selected from Google Drive</h2>
+            <ul className="space-y-2">
+              {selectedFiles.map((file, idx) => (
+                <li
+                  key={idx}
+                  className="p-2 border rounded bg-white"
+                >
+                  📄 {file.name} <br />
+                  <span className="text-sm text-gray-500">{file.id}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      {/* Show uploaded docs */}
+      <div className="mt-6">
+        <h2 className="text-lg font-semibold mb-2">Uploaded Documents</h2>
+        <ul className="space-y-2">
+          {uploadedDocs.map((doc) => (
+            <li key={doc.id} className="p-2 border rounded">
+              {doc.name} - <span>{doc.status}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 };
