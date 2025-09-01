@@ -22,19 +22,18 @@ const App: React.FC = () => {
   // Scopes we want from Google Drive
   const scope = "https://www.googleapis.com/auth/drive.readonly";
 
-  // Fetch OAuth config from backend on mount
+  // Fetch OAuth config from backend on mount (get client_id only)
   useEffect(() => {
     fetch("http://localhost:4000/auth/config")
       .then((r) => r.json())
       .then((cfg) => {
-        const computedRedirect = `${window.location.origin}/`;
         setClientId(cfg.client_id || import.meta.env.VITE_GOOGLE_CLIENT_ID || null);
-        setRedirectUri(cfg.redirect_uri || computedRedirect);
+        // Force redirect to server callback to avoid mismatches
+        setRedirectUri("http://localhost:4000/oauth2callback");
       })
       .catch(() => {
-        const fallbackRedirect = `${window.location.origin}/`;
         setClientId(import.meta.env.VITE_GOOGLE_CLIENT_ID || null);
-        setRedirectUri(import.meta.env.VITE_GOOGLE_REDIRECT_URI || fallbackRedirect);
+        setRedirectUri("http://localhost:4000/oauth2callback");
       });
   }, []);
 
@@ -49,9 +48,17 @@ const App: React.FC = () => {
     window.location.href = authUrl;
   };
 
-  // Handle the redirect back to our app
+  // Handle the redirect back to our app when server passes tokens via query
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
+    const receivedAccessToken = urlParams.get("access_token");
+    if (receivedAccessToken) {
+      setAccessToken(receivedAccessToken);
+      setTokenDetails({ access_token: receivedAccessToken });
+      window.history.replaceState({}, document.title, window.location.pathname);
+      return;
+    }
+
     const code = urlParams.get("code");
     const errorParam = urlParams.get("error");
 
@@ -71,7 +78,7 @@ const App: React.FC = () => {
       
       console.log("Exchanging authorization code for tokens...");
       
-      // Send code to backend
+      // Send code to backend (fallback path if Google redirected to frontend)
       fetch(`http://localhost:4000/auth/callback?code=${encodeURIComponent(code)}&redirect_uri=${encodeURIComponent(redirectUri)}`, {
         method: "GET",
         headers: { 
