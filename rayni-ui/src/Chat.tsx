@@ -1,5 +1,7 @@
-import React, { useState } from "react";
+// Chat.tsx
+import React, { useCallback, useEffect, useRef, useState } from "react";
 
+type DocRef = { id: string; page?: number; label?: string };
 type Citation = { label: string; docId: string; page?: number };
 
 type Message = {
@@ -12,148 +14,166 @@ type Message = {
 type ChatProps = {
   projectId: string;
   instrumentIds: string[];
-  docs: any[]; // uploadedDocs passed in from App
+  docs: Array<{ id: string; name: string }>;
   onOpenCitation: (docId: string, page?: number) => void;
 };
 
-const Chat: React.FC<ChatProps> = ({
-  projectId,
-  instrumentIds,
-  docs,
-  onOpenCitation,
-}) => {
+const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitation }) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
-  const [loading, setLoading] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [chatId] = useState(() => Math.random().toString(36).slice(2));
 
-  const sendMessage = async () => {
-    if (!input.trim() || !projectId) return;
+  const streamBufferRef = useRef<string>(""); // accumulates current assistant text
+  const sourceRef = useRef<EventSource | null>(null);
+  const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-    const userMsg: Message = {
-      id: crypto.randomUUID(),
-      role: "user",
-      content: input,
+  // auto-scroll to bottom
+  useEffect(() => {
+    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages, isStreaming]);
+
+  const startStream = useCallback(
+    (prompt: string) => {
+      // 1) push user message
+      const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: prompt };
+      setMessages((m) => [...m, userMsg]);
+
+      // 2) create an empty assistant placeholder to paint deltas into
+      const placeholderId = crypto.randomUUID();
+      const placeholder: Message = { id: placeholderId, role: "assistant", content: "" };
+      setMessages((m) => [...m, placeholder]);
+
+      setIsStreaming(true);
+      streamBufferRef.current = "";
+
+      // Build query (keep it simple for mock)
+      const q = new URLSearchParams({
+        chatId,
+        message: prompt,
+        projectId: projectId || "",
+        instrumentIds: instrumentIds.join(","),
+        docs: String(docs.length),
+      });
+
+      const es = new EventSource(`http://localhost:4000/api/chat/stream?${q.toString()}`);
+      sourceRef.current = es;
+
+      es.addEventListener("chunk", (ev: MessageEvent) => {
+        try {
+          const { delta } = JSON.parse(ev.data);
+          streamBufferRef.current += delta || "";
+          // paint into the last assistant message
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === placeholderId ? { ...m, content: streamBufferRef.current } : m
+            )
+          );
+        } catch {}
+      });
+
+      es.addEventListener("done", (ev: MessageEvent) => {
+        try {
+          const { message } = JSON.parse(ev.data) as { message: Message };
+          // replace placeholder with final message (content + citations)
+          setMessages((prev) =>
+            prev.map((m) => (m.id === placeholderId ? { ...message } : m))
+          );
+        } catch {
+          // if parsing fails, we still finalize with whatever we buffered
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === placeholderId ? { ...m, content: streamBufferRef.current } : m
+            )
+          );
+        } finally {
+          es.close();
+          sourceRef.current = null;
+          setIsStreaming(false);
+        }
+      });
+
+      es.onerror = () => {
+        // fallback: close stream, keep buffered text
+        es.close();
+        sourceRef.current = null;
+        setIsStreaming(false);
+      };
+    },
+    [chatId, docs.length, instrumentIds, projectId]
+  );
+
+  useEffect(() => {
+    return () => {
+      // cleanup on unmount
+      sourceRef.current?.close();
     };
-    setMessages((prev) => [...prev, userMsg]);
+  }, []);
+
+  const onSend = (e?: React.FormEvent) => {
+    e?.preventDefault();
+    const val = input.trim();
+    if (!val || isStreaming) return;
+    startStream(val);
     setInput("");
-    setLoading(true);
-
-    // Start assistant message with empty content
-    const aiId = crypto.randomUUID();
-    const aiMsg: Message = { id: aiId, role: "assistant", content: "" };
-    setMessages((prev) => [...prev, aiMsg]);
-
-    // Fake streaming response
-    const fakeReply =
-      "AI (mock): Try checking the pump seals [1] and recalibrate the detector [2].";
-    const words = fakeReply.split(" ");
-    let i = 0;
-
-    const interval = setInterval(() => {
-      i++;
-      setMessages((prev) =>
-        prev.map((m) =>
-          m.id === aiId ? { ...m, content: words.slice(0, i).join(" ") } : m
-        )
-      );
-
-      if (i === words.length) {
-        clearInterval(interval);
-
-        // Attach mock citations after streaming finishes
-        setMessages((prev) =>
-          prev.map((m) =>
-            m.id === aiId
-              ? {
-                  ...m,
-                  citations: [
-                    { label: "[1]", docId: "d1", page: 42 },
-                    { label: "[2]", docId: "d1", page: 73 },
-                  ],
-                }
-              : m
-          )
-        );
-
-        setLoading(false);
-      }
-    }, 200);
   };
 
-  const handleFeedback = (msgId: string, value: "up" | "down") => {
-    console.log(`Feedback for ${msgId}: ${value}`);
-    // TODO: send to mocked backend
+  const renderMessage = (m: Message) => {
+    const isUser = m.role === "user";
+    return (
+      <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"} my-2`}>
+        <div
+          className={`max-w-[75%] rounded p-3 ${
+            isUser ? "bg-blue-100" : "bg-gray-100"
+          } whitespace-pre-wrap`}
+        >
+          <div className="text-sm">{m.content}</div>
+
+          {/* Citations */}
+          {m.citations?.length ? (
+            <div className="mt-2 flex gap-2 text-xs">
+              {m.citations.map((c) => (
+                <button
+                  key={c.label}
+                  className="underline hover:no-underline"
+                  onClick={() => onOpenCitation(c.docId, c.page)}
+                  title={`Open ${c.label} (${c.docId}${c.page ? ` p.${c.page}` : ""})`}
+                >
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          ) : null}
+        </div>
+      </div>
+    );
   };
 
   return (
-    <div className="mt-6 p-4 border rounded bg-white shadow">
-      <h2 className="text-lg font-semibold mb-2">AI Chat</h2>
-
-      <div className="h-64 overflow-y-auto border p-2 mb-2 bg-gray-50">
-        {messages.map((msg) => (
-          <div
-            key={msg.id}
-            className={`mb-2 p-2 rounded max-w-lg ${
-              msg.role === "user"
-                ? "bg-blue-100 ml-auto text-right"
-                : "bg-gray-200 text-left"
-            }`}
-          >
-            <div>
-              <strong>{msg.role === "user" ? "You" : "AI"}:</strong>{" "}
-              {msg.content}
-            </div>
-
-            {/* Citations */}
-            {msg.role === "assistant" && msg.citations && (
-              <div className="mt-1 space-x-2">
-                {msg.citations.map((c) => (
-                  <button
-                    key={c.label}
-                    className="underline text-xs text-blue-600"
-                    onClick={() => onOpenCitation(c.docId, c.page)}
-                  >
-                    {c.label}
-                  </button>
-                ))}
-              </div>
-            )}
-
-            {/* Feedback */}
-            {msg.role === "assistant" && (
-              <div className="mt-1 space-x-2 text-sm">
-                <button onClick={() => handleFeedback(msg.id, "up")}>👍</button>
-                <button onClick={() => handleFeedback(msg.id, "down")}>
-                  👎
-                </button>
-              </div>
-            )}
-          </div>
-        ))}
+    <div className="flex flex-col h-full">
+      <div ref={scrollerRef} className="flex-1 overflow-y-auto pr-2">
+        {messages.map(renderMessage)}
+        {isStreaming && (
+          <div className="text-xs text-gray-400 mt-2">Streaming…</div>
+        )}
       </div>
 
-      <div className="flex space-x-2">
+      <form onSubmit={onSend} className="mt-3 flex gap-2">
         <input
-          type="text"
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          className="flex-grow border rounded p-2"
-          placeholder={
-            projectId ? "Ask something..." : "Select a project to chat"
-          }
-          disabled={loading || !projectId}
-          onKeyDown={(e) => {
-            if (e.key === "Enter") sendMessage();
-          }}
+          placeholder="Ask something…"
+          className="flex-1 border rounded px-3 py-2"
+          disabled={isStreaming}
         />
         <button
-          onClick={sendMessage}
-          disabled={loading || !projectId}
-          className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+          type="submit"
+          disabled={isStreaming || !input.trim()}
+          className="px-4 py-2 bg-blue-600 text-white rounded disabled:opacity-50"
         >
-          {loading ? "..." : "Send"}
+          Send
         </button>
-      </div>
+      </form>
     </div>
   );
 };
