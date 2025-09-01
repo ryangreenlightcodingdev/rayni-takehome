@@ -11,7 +11,7 @@ type Doc = {
   mimeType: string;
   size?: number;
   url?: string;
-  page?: number; // support citations
+  page?: number;
 };
 
 type Project = { id: string; name: string };
@@ -30,11 +30,13 @@ const App: React.FC = () => {
   const [selectedProject, setSelectedProject] = useState<string>("");
   const [selectedInstruments, setSelectedInstruments] = useState<string[]>([]);
 
+  // 🔑 Save Drive access token so we can download file bytes
+  const [driveToken, setDriveToken] = useState<string | null>(null);
+
   const CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID as string;
   const API_KEY = import.meta.env.VITE_GOOGLE_API_KEY as string;
   const SCOPES = "https://www.googleapis.com/auth/drive.readonly";
 
-  // Load gapi client and picker
   useEffect(() => {
     const loadScript = () => {
       const gapi = (window as any).gapi;
@@ -45,16 +47,15 @@ const App: React.FC = () => {
         });
         gapi.load("picker", () => setPickerLoaded(true));
       }
-
       const googleObj = (window as any).google;
-      if (googleObj && googleObj.accounts && googleObj.accounts.oauth2) {
+      if (googleObj?.accounts?.oauth2) {
         setGisLoaded(true);
       }
     };
 
     loadScript();
 
-    // Mock seed data for now (replace with API later)
+    // Mock seed data (swap to mock API later)
     setProjects([
       { id: "p1", name: "Project X – Protein Yield" },
       { id: "p2", name: "Project Y – Low Signal Study" },
@@ -67,7 +68,7 @@ const App: React.FC = () => {
     ]);
   }, []);
 
-  // --- Google Auth + Picker ---
+  // ---------- Google Auth + Picker ----------
   const handleAuthClick = async () => {
     if (!gisLoaded) {
       console.error("Google Identity Services not loaded");
@@ -82,9 +83,9 @@ const App: React.FC = () => {
           console.error("❌ Token error", response);
           return;
         }
-        const token = response.access_token;
-        console.log("✅ Google Access Token:", token);
-        openPicker(token);
+        // ✅ keep the token so we can fetch bytes
+        setDriveToken(response.access_token);
+        openPicker(response.access_token);
       },
     });
 
@@ -111,27 +112,76 @@ const App: React.FC = () => {
     picker.setVisible(true);
   };
 
-  const pickerCallback = (data: any) => {
-    if (data.action === (window as any).google.picker.Action.PICKED) {
-      const docs = data.docs;
-      const driveDocs = docs.map((doc: any) => ({
-        id: doc.id,
-        name: doc.name,
-        status: "Google Drive",
-        source: "google-drive" as const,
-        mimeType: doc.mimeType,
-        size: doc.sizeBytes,
-        url:
-          doc.url ||
-          doc.embedUrl ||
-          doc.webViewLink ||
-          `https://drive.google.com/uc?id=${doc.id}&export=download`,
-      }));
+  // Helpers to detect native Google files (need export)
+  const isGoogleDocType = (mime: string) =>
+    mime.startsWith("application/vnd.google-apps.");
+
+  const exportMimeForGoogleType = (mime: string) => {
+    // we’ll export everything to PDF to preview
+    // (you could branch: sheets→xlsx, slides→pdf, etc.)
+    return "application/pdf";
+  };
+
+  // Download a Drive file (or export native Google files) and return an Object URL
+  const fetchDriveObjectUrl = async (
+    fileId: string,
+    mimeType: string,
+    token: string
+  ) => {
+    const endpoint = isGoogleDocType(mimeType)
+      ? `https://www.googleapis.com/drive/v3/files/${fileId}/export?mimeType=${encodeURIComponent(
+          exportMimeForGoogleType(mimeType)
+        )}`
+      : `https://www.googleapis.com/drive/v3/files/${fileId}?alt=media`;
+
+    const res = await fetch(endpoint, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    if (!res.ok) {
+      throw new Error(`Drive download failed: ${res.status} ${res.statusText}`);
+    }
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    // Try to keep the most accurate mime
+    const outMime =
+      isGoogleDocType(mimeType) ? "application/pdf" : blob.type || mimeType;
+    return { url, mime: outMime, size: blob.size };
+  };
+
+  const pickerCallback = async (data: any) => {
+    if (data.action !== (window as any).google.picker.Action.PICKED) return;
+    if (!driveToken) {
+      console.error("No Drive token found");
+      return;
+    }
+
+    try {
+      const picked = data.docs as any[];
+      const driveDocsPromises = picked.map(async (doc) => {
+        const { url, mime, size } = await fetchDriveObjectUrl(
+          doc.id,
+          doc.mimeType,
+          driveToken
+        );
+        return {
+          id: doc.id,
+          name: doc.name,
+          status: "Google Drive" as const,
+          source: "google-drive" as const,
+          mimeType: mime || doc.mimeType || "application/octet-stream",
+          size,
+          url, // ✅ object URL that react-pdf / <img> can render
+        } as Doc;
+      });
+
+      const driveDocs = await Promise.all(driveDocsPromises);
       setUploadedDocs((prev) => [...prev, ...driveDocs]);
+    } catch (err) {
+      console.error("Drive fetch error:", err);
     }
   };
 
-  // --- Local File Upload ---
+  // ---------- Local File Upload ----------
   const handleFilesUploaded = (files: any[]) => {
     const localDocs = files.map((file) => ({
       id: file.id,
@@ -140,17 +190,15 @@ const App: React.FC = () => {
       source: "local" as const,
       mimeType: (file as any).type || "application/octet-stream",
       size: (file as any).size,
-      url: (file as any).url,
+      url: (file as any).url, // should be an Object URL from FileUpload.tsx
     }));
     setUploadedDocs((prev) => [...prev, ...localDocs]);
   };
 
-  // --- Citation Handler ---
+  // ---------- Citation Handler ----------
   const handleOpenCitation = (docId: string, page?: number) => {
     const doc = uploadedDocs.find((d) => d.id === docId);
-    if (doc) {
-      setSelectedDoc({ ...doc, page });
-    }
+    if (doc) setSelectedDoc({ ...doc, page });
   };
 
   return (
@@ -186,7 +234,7 @@ const App: React.FC = () => {
         </ul>
       </div>
 
-      {/* Center: Project/Instrument Selector + Chat */}
+      {/* Center: Selector + Chat */}
       <div className="flex flex-col w-3/5 border-r">
         <div className="flex items-center justify-between p-3 border-b bg-white">
           <div className="space-x-2">
