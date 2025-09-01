@@ -15,7 +15,7 @@ if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
   console.warn("⚠️ Missing Google OAuth env vars. Check your .env file!");
 }
 
-// Expose safe OAuth config to frontend
+// ✅ Expose safe OAuth config to frontend
 app.get("/auth/config", (req, res) => {
   res.json({
     client_id: GOOGLE_CLIENT_ID,
@@ -23,7 +23,7 @@ app.get("/auth/config", (req, res) => {
   });
 });
 
-// ✅ Single Google OAuth callback (matches Google Cloud)
+// ✅ Google OAuth callback
 app.get("/oauth2callback", async (req, res) => {
   const code = req.query.code;
   console.log("✅ Received authorization code:", code);
@@ -58,6 +58,17 @@ app.get("/oauth2callback", async (req, res) => {
     console.error("❌ Token exchange failed:", err);
     res.status(500).send("Token exchange failed");
   }
+});
+
+// ✅ Mock Chat API (AI assistant simulation)
+app.post("/api/chat", (req, res) => {
+  const { message, projectId, instrumentIds, docs } = req.body;
+  console.log("📩 Chat request received:", { message, projectId, instrumentIds, docs });
+
+  // Fake AI reply (mocking behavior for now)
+  const reply = `🤖 AI (mock): You said "${message}". Context → Project=${projectId}, Instruments=${instrumentIds?.join(", ") || "none"}, Docs=${docs?.length || 0}`;
+
+  res.json({ reply });
 });
 
 // Start server

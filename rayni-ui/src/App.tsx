@@ -1,5 +1,6 @@
 import React, { useMemo, useState } from "react";
 import PdfViewer from "./PdfViewer";
+import Chat from "./Chat";
 // If you already have these, keep them. Otherwise you can remove these imports.
 // import FileUpload from "./FileUpload";
 // import PreviewModal from "./PreviewModal";
@@ -194,7 +195,11 @@ const App: React.FC = () => {
           </div>
         </div>
       </div>
-
+      <Chat
+  projectId="p1" // mock project
+  instrumentIds={["i1", "i2"]} // mock instruments
+  docs={uploadedDocs}
+/>
       {/* If you already have a modal, you can swap the inline preview above with your modal: 
           <PreviewModal open={!!previewDoc} onClose={() => setPreviewDoc(null)}>
             {previewDoc && (
