@@ -1,6 +1,11 @@
 import { useState } from "react";
-import { projects, instruments, docs as initialDocs, savedChats } from "./mockData";
-import type { Doc } from "./mockData";
+import {
+  projects,
+  instruments,
+  docs as initialDocs,
+  savedChats,
+  type Doc,
+} from "./mockData";
 
 function App() {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
@@ -8,6 +13,7 @@ function App() {
   const [input, setInput] = useState("");
   const [docs, setDocs] = useState<Doc[]>(initialDocs);
 
+  // Send chat message
   const handleSend = () => {
     if (!input.trim()) return;
     const newMsg = {
@@ -20,23 +26,31 @@ function App() {
     setInput("");
   };
 
-  // Handle file upload
+  // File upload
   const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>, projectId: string) => {
-    if (!e.target.files) return;
+    if (!e.target.files?.length) return;
 
     const file = e.target.files[0];
-    if (!file) return;
-
     const newDoc: Doc = {
-      id: Date.now().toString(),
+      id: "doc-" + Date.now(),
       name: file.name,
       source: "local",
-      url: URL.createObjectURL(file), // creates a temporary link
-      status: "uploaded",
+      url: URL.createObjectURL(file), // lets user click to open
+      status: "uploading",
       projectId,
     };
 
+    // Add with uploading status
     setDocs([...docs, newDoc]);
+
+    // Simulate "indexing"
+    setTimeout(() => {
+      setDocs((prev) =>
+        prev.map((d) =>
+          d.id === newDoc.id ? { ...d, status: "indexed" } : d
+        )
+      );
+    }, 2000);
   };
 
   return (
@@ -49,54 +63,56 @@ function App() {
             <li key={project.id}>
               <button
                 onClick={() =>
-                  setSelectedProjectId(selectedProjectId === project.id ? null : project.id)
+                  setSelectedProjectId(
+                    selectedProjectId === project.id ? null : project.id
+                  )
                 }
                 className={`w-full text-left p-2 rounded ${
                   selectedProjectId === project.id
                     ? "bg-blue-100 font-semibold"
-                    : "bg-gray-100 hover:bg-gray-200"
+                    : "hover:bg-gray-100"
                 }`}
               >
                 {project.name}
               </button>
 
-              {/* Instruments + Docs */}
+              {/* Show instruments & docs if project is selected */}
               {selectedProjectId === project.id && (
-                <div className="ml-4 mt-2 space-y-2">
-                  <ul className="ml-2 list-disc">
-                    {instruments
-                      .filter((inst) => inst.projectId === project.id)
-                      .map((inst) => (
-                        <li key={inst.id}>{inst.name}</li>
-                      ))}
-                  </ul>
+                <ul className="ml-4 mt-2 space-y-1">
+                  {instruments
+                    .filter((i) => i.projectId === project.id)
+                    .map((inst) => (
+                      <li key={inst.id} className="ml-2 text-sm text-gray-700">
+                        {inst.name}
+                      </li>
+                    ))}
 
-                  <ul className="ml-2">
-                    {docs
-                      .filter((doc) => doc.projectId === project.id)
-                      .map((doc) => (
-                        <li key={doc.id}>
-                          <a
-                            href={doc.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 hover:underline"
-                          >
-                            {doc.name}
-                          </a>{" "}
-                          <span className="text-sm text-gray-500">({doc.status})</span>
-                        </li>
-                      ))}
-                  </ul>
+                  {docs
+                    .filter((d) => d.projectId === project.id)
+                    .map((doc) => (
+                      <li key={doc.id} className="ml-2 text-sm">
+                        <a
+                          href={doc.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-600 hover:underline"
+                        >
+                          {doc.name}
+                        </a>{" "}
+                        <span className="text-xs text-gray-500">
+                          ({doc.status})
+                        </span>
+                      </li>
+                    ))}
 
-                  {/* Upload button */}
-                  <input
-                    type="file"
-                    accept=".pdf,.docx,.pptx,.txt"
-                    onChange={(e) => handleFileUpload(e, project.id)}
-                    className="mt-2"
-                  />
-                </div>
+                  {/* Upload Button */}
+                  <li className="ml-2 mt-2">
+                    <input
+                      type="file"
+                      onChange={(e) => handleFileUpload(e, project.id)}
+                    />
+                  </li>
+                </ul>
               )}
             </li>
           ))}
