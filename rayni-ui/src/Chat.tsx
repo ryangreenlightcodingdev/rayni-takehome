@@ -2,7 +2,6 @@
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
-type DocRef = { id: string; page?: number; label?: string };
 type Citation = { label: string; docId: string; page?: number };
 
 type Message = {
@@ -31,7 +30,10 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
 
   // auto-scroll to bottom
   useEffect(() => {
-    scrollerRef.current?.scrollTo({ top: scrollerRef.current.scrollHeight, behavior: "smooth" });
+    scrollerRef.current?.scrollTo({
+      top: scrollerRef.current.scrollHeight,
+      behavior: "smooth",
+    });
   }, [messages, isStreaming]);
 
   const startStream = useCallback(
@@ -48,13 +50,17 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
       setIsStreaming(true);
       streamBufferRef.current = "";
 
-      // Build query (keep it simple for mock)
+      // Pick the first doc as the "primary" doc for citations
+      const primaryDocId = docs[0]?.id || "";
+
+      // Build query string for SSE
       const q = new URLSearchParams({
         chatId,
         message: prompt,
         projectId: projectId || "",
         instrumentIds: instrumentIds.join(","),
         docs: String(docs.length),
+        primaryDocId, // 👈 ensures backend ties citations to the correct doc
       });
 
       const es = new EventSource(`http://localhost:4000/api/chat/stream?${q.toString()}`);
@@ -81,10 +87,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
             prev.map((m) => (m.id === placeholderId ? { ...message } : m))
           );
         } catch {
-          // if parsing fails, we still finalize with whatever we buffered
+          // fallback: finalize with whatever we buffered
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === placeholderId ? { ...m, content: streamBufferRef.current } : m
+              m.id === placeholderId
+                ? { ...m, content: streamBufferRef.current }
+                : m
             )
           );
         } finally {
@@ -95,13 +103,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
       });
 
       es.onerror = () => {
-        // fallback: close stream, keep buffered text
         es.close();
         sourceRef.current = null;
         setIsStreaming(false);
       };
     },
-    [chatId, docs.length, instrumentIds, projectId]
+    [chatId, docs, instrumentIds, projectId]
   );
 
   useEffect(() => {
@@ -128,36 +135,34 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
             isUser ? "bg-blue-100" : "bg-gray-100"
           } whitespace-pre-wrap`}
         >
-          {/* <div className="text-sm">{m.content}</div> */}
+          {/* Markdown rendering with image/table support */}
           <div className="prose prose-sm max-w-none">
-  <ReactMarkdown
-    components={{
-      // Render images responsively inside bubbles
-      img: ({ node, ...props }) => (
-        // eslint-disable-next-line jsx-a11y/alt-text
-        <img
-          {...props}
-          loading="lazy"
-          className="my-2 rounded-md max-w-full h-auto"
-        />
-      ),
-      // Make wide tables scroll horizontally instead of breaking layout
-      table: ({ node, ...props }) => (
-        <div className="my-2 overflow-x-auto">
-          <table {...props} className="table-auto border-collapse" />
-        </div>
-      ),
-      th: ({ node, ...props }) => (
-        <th {...props} className="border px-2 py-1 text-left" />
-      ),
-      td: ({ node, ...props }) => (
-        <td {...props} className="border px-2 py-1 align-top" />
-      ),
-    }}
-  >
-    {m.content}
-  </ReactMarkdown>
-</div>
+            <ReactMarkdown
+              components={{
+                img: ({ node, ...props }) => (
+                  // eslint-disable-next-line jsx-a11y/alt-text
+                  <img
+                    {...props}
+                    loading="lazy"
+                    className="my-2 rounded-md max-w-full h-auto"
+                  />
+                ),
+                table: ({ node, ...props }) => (
+                  <div className="my-2 overflow-x-auto">
+                    <table {...props} className="table-auto border-collapse" />
+                  </div>
+                ),
+                th: ({ node, ...props }) => (
+                  <th {...props} className="border px-2 py-1 text-left" />
+                ),
+                td: ({ node, ...props }) => (
+                  <td {...props} className="border px-2 py-1 align-top" />
+                ),
+              }}
+            >
+              {m.content}
+            </ReactMarkdown>
+          </div>
 
           {/* Citations */}
           {m.citations?.length ? (
@@ -183,9 +188,7 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
     <div className="flex flex-col h-full">
       <div ref={scrollerRef} className="flex-1 overflow-y-auto pr-2">
         {messages.map(renderMessage)}
-        {isStreaming && (
-          <div className="text-xs text-gray-400 mt-2">Streaming…</div>
-        )}
+        {isStreaming && <div className="text-xs text-gray-400 mt-2">Streaming…</div>}
       </div>
 
       <form onSubmit={onSend} className="mt-3 flex gap-2">

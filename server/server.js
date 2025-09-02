@@ -74,7 +74,6 @@ const db = {
     { id: "i4", name: "Mass Spectrometer", projectId: "p2" },
     { id: "i5", name: "pH Meter", projectId: "p1" },
   ],
-  // Mixed file types; previewUrl used for right-side viewer where applicable
   docs: [
     {
       id: "d1",
@@ -98,8 +97,9 @@ const db = {
       id: "d3",
       name: "LCMS_Troubleshooting.docx",
       source: "local",
-      mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      status: "uploaded", // show pipeline states
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      status: "uploaded",
       previewUrl: null,
       pages: null,
     },
@@ -107,7 +107,8 @@ const db = {
       id: "d4",
       name: "Instrument_Safety.pptx",
       source: "local",
-      mimeType: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      mimeType:
+        "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       status: "queued",
       previewUrl: null,
       pages: null,
@@ -148,11 +149,7 @@ const db = {
         },
       ],
     },
-    {
-      id: "c2",
-      title: "LC-MS: Tuning & calibration basics",
-      messages: [],
-    },
+    { id: "c2", title: "LC-MS: Tuning & calibration basics", messages: [] },
   ],
 };
 
@@ -160,8 +157,6 @@ const db = {
 // Helpers
 // -----------------------------
 const uuid = () => Math.random().toString(36).slice(2, 10);
-
-// Simple mock “indexing” progressor
 function advanceDocStatus(doc) {
   if (doc.status === "queued") doc.status = "uploaded";
   else if (doc.status === "uploaded") doc.status = "indexed";
@@ -170,13 +165,8 @@ function advanceDocStatus(doc) {
 // -----------------------------
 // Seed/mock API routes
 // -----------------------------
+app.get("/api/projects", (req, res) => res.json(db.projects));
 
-// Projects
-app.get("/api/projects", (req, res) => {
-  res.json(db.projects);
-});
-
-// Instruments (optionally filter by project)
 app.get("/api/instruments", (req, res) => {
   const { projectId } = req.query;
   const list = projectId
@@ -185,19 +175,14 @@ app.get("/api/instruments", (req, res) => {
   res.json(list);
 });
 
-// Docs list
-app.get("/api/docs", (req, res) => {
-  res.json(db.docs);
-});
+app.get("/api/docs", (req, res) => res.json(db.docs));
 
-// Doc details (e.g., to get preview URL and pages)
 app.get("/api/docs/:id", (req, res) => {
   const doc = db.docs.find((d) => d.id === req.params.id);
   if (!doc) return res.status(404).json({ error: "Not found" });
   res.json(doc);
 });
 
-// Simulate indexing progress
 app.post("/api/docs/:id/index", (req, res) => {
   const doc = db.docs.find((d) => d.id === req.params.id);
   if (!doc) return res.status(404).json({ error: "Not found" });
@@ -205,7 +190,6 @@ app.post("/api/docs/:id/index", (req, res) => {
   res.json(doc);
 });
 
-// Saved chats list (summaries)
 app.get("/api/chats", (req, res) => {
   const summaries = db.chats.map((c) => ({
     id: c.id,
@@ -217,14 +201,12 @@ app.get("/api/chats", (req, res) => {
   res.json(summaries);
 });
 
-// Read single chat
 app.get("/api/chats/:id", (req, res) => {
   const chat = db.chats.find((c) => c.id === req.params.id);
   if (!chat) return res.status(404).json({ error: "Not found" });
   res.json(chat);
 });
 
-// Create/rename chat
 app.post("/api/chats", (req, res) => {
   const { title } = req.body;
   const chat = { id: uuid(), title: title || "New Chat", messages: [] };
@@ -232,9 +214,8 @@ app.post("/api/chats", (req, res) => {
   res.status(201).json(chat);
 });
 
-// React to a message (thumbs up/down)
 app.post("/api/reactions", (req, res) => {
-  const { chatId, messageId, type } = req.body; // type: "up" | "down"
+  const { chatId, messageId, type } = req.body; // "up" | "down"
   const chat = db.chats.find((c) => c.id === chatId);
   if (!chat) return res.status(404).json({ error: "Chat not found" });
   const msg = chat.messages.find((m) => m.id === messageId);
@@ -246,7 +227,6 @@ app.post("/api/reactions", (req, res) => {
   res.json({ reactions: msg.reactions });
 });
 
-// Comment on a message
 app.post("/api/comments", (req, res) => {
   const { chatId, messageId, text } = req.body;
   const chat = db.chats.find((c) => c.id === chatId);
@@ -260,11 +240,18 @@ app.post("/api/comments", (req, res) => {
 });
 
 // -----------------------------
-// Chat (non-streaming, simple mock)
+// Chat (non-streaming mock) — now supports primaryDocId
 // -----------------------------
 app.post("/api/chat", (req, res) => {
-  const { chatId, message, projectId, instrumentIds, docs } = req.body;
-  console.log("📩 Chat request received:", { chatId, message, projectId, instrumentIds, docs });
+  const { chatId, message, projectId, instrumentIds, docs, primaryDocId } = req.body;
+  console.log("📩 Chat request received:", {
+    chatId,
+    message,
+    projectId,
+    instrumentIds,
+    docs,
+    primaryDocId,
+  });
 
   const chat =
     db.chats.find((c) => c.id === chatId) ||
@@ -277,10 +264,10 @@ app.post("/api/chat", (req, res) => {
   const userMsg = { id: uuid(), role: "user", content: message, createdAt: Date.now() };
   chat.messages.push(userMsg);
 
-  // Fake assistant reply with citations + page numbers
+  const targetDocId = String(primaryDocId || db.docs[0]?.id || "d1");
   const citations = [
-    { label: "[1]", docId: "d2", page: 7 },
-    { label: "[2]", docId: "d1", page: 42 },
+    { label: "[1]", docId: targetDocId, page: 2 },
+    { label: "[2]", docId: targetDocId, page: 5 },
   ];
   const replyText = `Try checking the pump seals ${citations[0].label} and recalibrate the detector ${citations[1].label}.`;
   const assistantMsg = {
@@ -296,11 +283,17 @@ app.post("/api/chat", (req, res) => {
 });
 
 // -----------------------------
-// Chat (SSE streaming; tokenized mock)
-// Frontend: connect to /api/chat/stream with query or body; here we use query for simplicity.
+// Chat (SSE streaming; tokenized mock) — supports primaryDocId
 // -----------------------------
 app.get("/api/chat/stream", (req, res) => {
-  const { chatId = uuid(), message = "", projectId, instrumentIds, docs } = req.query;
+  const {
+    chatId = uuid(),
+    message = "",
+    projectId,
+    instrumentIds,
+    docs,
+    primaryDocId, // 👈 passed from frontend to bind citations to the visible doc
+  } = req.query;
 
   // SSE headers
   res.setHeader("Content-Type", "text/event-stream");
@@ -323,9 +316,11 @@ app.get("/api/chat/stream", (req, res) => {
   // Mock assistant content + citations
   const full =
     "Checking pump seals and lines can fix low HPLC signal. Also verify mobile phase mixing and recalibrate the detector.";
+
+  const targetDocId = String(primaryDocId || db.docs[0]?.id || "d1"); // 👈 bind to user's doc
   const citations = [
-    { label: "[1]", docId: "d2", page: 5 },
-    { label: "[2]", docId: "d1", page: 42 },
+    { label: "[1]", docId: targetDocId, page: 2 },
+    { label: "[2]", docId: targetDocId, page: 5 },
   ];
 
   const words = full.split(" ");
@@ -342,7 +337,7 @@ app.get("/api/chat/stream", (req, res) => {
       const assistantMsg = {
         id: uuid(),
         role: "assistant",
-        content: `${full} ${citations.map((c) => `${c.label}`).join(" ")}`,
+        content: `${full} ${citations.map((c) => c.label).join(" ")}`,
         createdAt: Date.now(),
         citations,
       };
@@ -352,7 +347,7 @@ app.get("/api/chat/stream", (req, res) => {
       res.write(`data: ${JSON.stringify({ message: assistantMsg, chatId })}\n\n`);
       res.end();
     }
-  }, 40); // ~fast stream
+  }, 40);
 });
 
 // -----------------------------
