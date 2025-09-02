@@ -3,12 +3,16 @@ import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
 type Citation = { label: string; docId: string; page?: number };
+type Reactions = { up: number; down: number };
+type Comment = { id: string; text: string; createdAt: number };
 
 type Message = {
   id: string;
   role: "user" | "assistant";
   content: string;
   citations?: Citation[];
+  reactions?: Reactions;
+  comments?: Comment[];
 };
 
 type ChatProps = {
@@ -30,7 +34,11 @@ const Chat: React.FC<ChatProps> = ({
   const [isStreaming, setIsStreaming] = useState(false);
   const [chatId] = useState(() => Math.random().toString(36).slice(2));
 
-  const streamBufferRef = useRef<string>(""); // accumulates current assistant text
+  // comment UI local state
+  const [openCommentFor, setOpenCommentFor] = useState<string | null>(null);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+
+  const streamBufferRef = useRef<string>("");
   const sourceRef = useRef<EventSource | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
@@ -83,7 +91,7 @@ const Chat: React.FC<ChatProps> = ({
         projectId: projectId || "",
         instrumentIds: instrumentIds.join(","),
         docs: String(docs.length),
-        primaryDocId, // ensures backend ties citations to the correct PDF
+        primaryDocId,
       });
 
       const es = new EventSource(
@@ -95,7 +103,6 @@ const Chat: React.FC<ChatProps> = ({
         try {
           const { delta } = JSON.parse(ev.data);
           streamBufferRef.current += delta || "";
-          // paint into the last assistant message
           setMessages((prev) =>
             prev.map((m) =>
               m.id === placeholderId
@@ -111,13 +118,11 @@ const Chat: React.FC<ChatProps> = ({
       es.addEventListener("done", (ev: MessageEvent) => {
         try {
           const { message } = JSON.parse(ev.data) as { message: Message };
-          // replace placeholder with final message (content + citations)
           setMessages((prev) =>
             prev.map((m) => (m.id === placeholderId ? { ...message } : m))
           );
         } catch (e) {
           console.error("done parse error", e);
-          // fallback: finalize with whatever we buffered
           setMessages((prev) =>
             prev.map((m) =>
               m.id === placeholderId
@@ -143,7 +148,6 @@ const Chat: React.FC<ChatProps> = ({
 
   useEffect(() => {
     return () => {
-      // cleanup on unmount
       sourceRef.current?.close();
     };
   }, []);
@@ -156,8 +160,51 @@ const Chat: React.FC<ChatProps> = ({
     setInput("");
   };
 
+  // --- Reactions & comments handlers ---
+  const sendReaction = async (messageId: string, type: "up" | "down") => {
+    try {
+      const res = await fetch("http://localhost:4000/api/reactions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, messageId, type }),
+      });
+      const data = (await res.json()) as { reactions: Reactions };
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, reactions: data.reactions } : m
+        )
+      );
+    } catch (e) {
+      console.error("reaction error", e);
+    }
+  };
+
+  const submitComment = async (messageId: string) => {
+    const text = (commentDrafts[messageId] || "").trim();
+    if (!text) return;
+    try {
+      const res = await fetch("http://localhost:4000/api/comments", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chatId, messageId, text }),
+      });
+      const data = (await res.json()) as { comments: Comment[] };
+      setMessages((prev) =>
+        prev.map((m) =>
+          m.id === messageId ? { ...m, comments: data.comments } : m
+        )
+      );
+      setCommentDrafts((d) => ({ ...d, [messageId]: "" }));
+      setOpenCommentFor(null);
+    } catch (e) {
+      console.error("comment error", e);
+    }
+  };
+
   const renderMessage = (m: Message) => {
     const isUser = m.role === "user";
+    const open = openCommentFor === m.id;
+
     return (
       <div
         key={m.id}
@@ -215,6 +262,62 @@ const Chat: React.FC<ChatProps> = ({
               ))}
             </div>
           ) : null}
+
+          {/* Feedback bar (assistant messages only) */}
+          {!isUser && (
+            <div className="mt-3 flex items-center gap-3 text-xs">
+              <button
+                className="px-2 py-1 border rounded"
+                onClick={() => sendReaction(m.id, "up")}
+                title="Thumbs up"
+              >
+                👍 {m.reactions?.up ?? 0}
+              </button>
+              <button
+                className="px-2 py-1 border rounded"
+                onClick={() => sendReaction(m.id, "down")}
+                title="Thumbs down"
+              >
+                👎 {m.reactions?.down ?? 0}
+              </button>
+              <button
+                className="px-2 py-1 border rounded"
+                onClick={() => setOpenCommentFor(open ? null : m.id)}
+                title="Add a comment"
+              >
+                💬 {m.comments?.length ?? 0}
+              </button>
+            </div>
+          )}
+
+          {/* Comment editor */}
+          {!isUser && open && (
+            <div className="mt-2">
+              <textarea
+                value={commentDrafts[m.id] || ""}
+                onChange={(e) =>
+                  setCommentDrafts((d) => ({ ...d, [m.id]: e.target.value }))
+                }
+                placeholder="Add a comment…"
+                className="w-full border rounded p-2 text-sm"
+                rows={2}
+              />
+              <div className="mt-2 flex gap-2">
+                <button
+                  className="px-2 py-1 bg-blue-600 text-white rounded"
+                  onClick={() => submitComment(m.id)}
+                >
+                  Submit
+                </button>
+                <button
+                  className="px-2 py-1 border rounded"
+                  onClick={() => setOpenCommentFor(null)}
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -224,7 +327,9 @@ const Chat: React.FC<ChatProps> = ({
     <div className="flex flex-col h-full">
       <div ref={scrollerRef} className="flex-1 overflow-y-auto pr-2">
         {messages.map(renderMessage)}
-        {isStreaming && <div className="text-xs text-gray-400 mt-2">Streaming…</div>}
+        {isStreaming && (
+          <div className="text-xs text-gray-400 mt-2">Streaming…</div>
+        )}
       </div>
 
       <form onSubmit={onSend} className="mt-3 flex gap-2">
