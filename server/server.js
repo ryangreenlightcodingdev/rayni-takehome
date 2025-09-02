@@ -52,7 +52,7 @@ app.get("/oauth2callback", async (req, res) => {
     }
 
     // Redirect back to frontend with token in query
-    res.redirect(`http://localhost:5173?access_token=${data.access_token}`);
+    res.redirect(`https://rayni-takehome.vercel.app?access_token=${data.access_token}`);
   } catch (err) {
     console.error("❌ Token exchange failed:", err);
     res.status(500).send("Token exchange failed");
