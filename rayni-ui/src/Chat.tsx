@@ -331,13 +331,15 @@ const Chat: React.FC<ChatProps> = ({
       </div>
 
       <form onSubmit={onSend} className="mt-3 flex gap-2">
-        <input
-          value={input}
-          onChange={(e) => setInput(e.target.value)}
-          placeholder="Ask something…"
-          className="flex-1 border rounded px-3 py-2"
-          disabled={isStreaming}
-        />
+      <textarea
+  value={input}
+  onChange={(e) => setInput(e.target.value)}
+  placeholder="Ask something…"
+  className="flex-1 border rounded px-3 py-2 resize-none"
+  disabled={isStreaming}
+  rows={3}
+/>
+
         <button
           type="submit"
           disabled={isStreaming || !input.trim()}
