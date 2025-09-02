@@ -86,13 +86,20 @@ const App: React.FC = () => {
     ]);
   }, [API_KEY]);
 
+  const API_URL = import.meta.env.VITE_API_URL;
+
   useEffect(() => {
-    fetch("http://localhost:4000/api/chats").then((r) => r.json()).then(setChats).catch(console.error);
-  }, []);
+    fetch(`${API_URL}/api/chats`)
+      .then((r) => r.json())
+      .then(setChats)
+      .catch(console.error);
+  }, [API_URL]);
+  
 
   const createNewChat = async () => {
-    const res = await fetch("http://localhost:4000/api/chats", {
-      method: "POST", headers: { "Content-Type": "application/json" },
+    const res = await fetch(`${API_URL}/api/chats`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ title: "New Chat" }),
     });
     const chat = await res.json();
@@ -103,10 +110,9 @@ const App: React.FC = () => {
 
   const loadChat = async (id: string) => {
     setActiveChatId(id);
-    const chat = await fetch(`http://localhost:4000/api/chats/${id}`).then((r) => r.json());
+    const chat = await fetch(`${API_URL}/api/chats/${id}`).then((r) => r.json());
     setActiveChatMessages(chat.messages || []);
   };
-
   // Google Auth + Picker
   const requestDriveToken = (): Promise<string> =>
     new Promise((resolve, reject) => {
