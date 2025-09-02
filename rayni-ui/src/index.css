@@ -47,3 +47,10 @@
 .stream-row { @apply flex gap-2 items-center text-xs mt-1 mb-2; }
 .stream-chip { @apply bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5; animation: pulse 1.6s ease-in-out infinite; }
 @keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }
+.instrument-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(100px, 1fr)); /* 2 columns */
+    gap: 10px; /* space between buttons */
+    max-width: 300px; /* keeps it neat */
+  }
+  
