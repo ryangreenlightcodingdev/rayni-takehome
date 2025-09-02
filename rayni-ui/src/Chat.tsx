@@ -1,4 +1,4 @@
-// Chat.tsx
+// src/Chat.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 
@@ -6,7 +6,7 @@ type Citation = { label: string; docId: string; page?: number };
 type Reactions = { up: number; down: number };
 type Comment = { id: string; text: string; createdAt: number };
 
-type Message = {
+export type ChatMessage = {
   id: string;
   role: "user" | "assistant";
   content: string;
@@ -16,33 +16,40 @@ type Message = {
 };
 
 type ChatProps = {
+  chatId?: string;                     // 👈 controlled by App
+  initialMessages?: ChatMessage[];     // 👈 loaded from server
   projectId: string;
   instrumentIds: string[];
-  // include mimeType so we can choose a PDF for citations
   docs: Array<{ id: string; name: string; mimeType?: string }>;
   onOpenCitation: (docId: string, page?: number) => void;
 };
 
 const Chat: React.FC<ChatProps> = ({
+  chatId: chatIdProp,
+  initialMessages,
   projectId,
   instrumentIds,
   docs,
   onOpenCitation,
 }) => {
-  const [messages, setMessages] = useState<Message[]>([]);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
-  const [chatId] = useState(() => Math.random().toString(36).slice(2));
 
-  // comment UI local state
-  const [openCommentFor, setOpenCommentFor] = useState<string | null>(null);
-  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
+  // stable fallback chat id if App hasn't created one yet
+  const fallbackIdRef = useRef(Math.random().toString(36).slice(2));
+  const chatId = chatIdProp || fallbackIdRef.current;
 
   const streamBufferRef = useRef<string>("");
   const sourceRef = useRef<EventSource | null>(null);
   const scrollerRef = useRef<HTMLDivElement | null>(null);
 
-  // auto-scroll to bottom
+  // when App loads/switches a chat, set those messages
+  useEffect(() => {
+    setMessages(initialMessages ?? []);
+  }, [chatId, initialMessages]);
+
+  // auto-scroll
   useEffect(() => {
     scrollerRef.current?.scrollTo({
       top: scrollerRef.current.scrollHeight,
@@ -52,17 +59,15 @@ const Chat: React.FC<ChatProps> = ({
 
   const startStream = useCallback(
     (prompt: string) => {
-      // 1) push user message
-      const userMsg: Message = {
+      const userMsg: ChatMessage = {
         id: crypto.randomUUID(),
         role: "user",
         content: prompt,
       };
       setMessages((m) => [...m, userMsg]);
 
-      // 2) create an empty assistant placeholder to paint deltas into
       const placeholderId = crypto.randomUUID();
-      const placeholder: Message = {
+      const placeholder: ChatMessage = {
         id: placeholderId,
         role: "assistant",
         content: "",
@@ -72,7 +77,7 @@ const Chat: React.FC<ChatProps> = ({
       setIsStreaming(true);
       streamBufferRef.current = "";
 
-      // Prefer a PDF doc for citations; fall back to the first doc
+      // Prefer a PDF for citations
       const pickPrimaryDocId = () => {
         const pdf =
           docs.find(
@@ -84,7 +89,6 @@ const Chat: React.FC<ChatProps> = ({
       };
       const primaryDocId = pickPrimaryDocId();
 
-      // Build query string for SSE
       const q = new URLSearchParams({
         chatId,
         message: prompt,
@@ -117,7 +121,7 @@ const Chat: React.FC<ChatProps> = ({
 
       es.addEventListener("done", (ev: MessageEvent) => {
         try {
-          const { message } = JSON.parse(ev.data) as { message: Message };
+          const { message } = JSON.parse(ev.data) as { message: ChatMessage };
           setMessages((prev) =>
             prev.map((m) => (m.id === placeholderId ? { ...message } : m))
           );
@@ -160,7 +164,7 @@ const Chat: React.FC<ChatProps> = ({
     setInput("");
   };
 
-  // --- Reactions & comments handlers ---
+  // reactions + comments
   const sendReaction = async (messageId: string, type: "up" | "down") => {
     try {
       const res = await fetch("http://localhost:4000/api/reactions", {
@@ -178,6 +182,9 @@ const Chat: React.FC<ChatProps> = ({
       console.error("reaction error", e);
     }
   };
+
+  const [openCommentFor, setOpenCommentFor] = useState<string | null>(null);
+  const [commentDrafts, setCommentDrafts] = useState<Record<string, string>>({});
 
   const submitComment = async (messageId: string) => {
     const text = (commentDrafts[messageId] || "").trim();
@@ -201,7 +208,7 @@ const Chat: React.FC<ChatProps> = ({
     }
   };
 
-  const renderMessage = (m: Message) => {
+  const renderMessage = (m: ChatMessage) => {
     const isUser = m.role === "user";
     const open = openCommentFor === m.id;
 
@@ -215,7 +222,6 @@ const Chat: React.FC<ChatProps> = ({
             isUser ? "bg-blue-100" : "bg-gray-100"
           } whitespace-pre-wrap`}
         >
-          {/* Markdown rendering with image/table support */}
           <div className="prose prose-sm max-w-none">
             <ReactMarkdown
               components={{
@@ -244,7 +250,6 @@ const Chat: React.FC<ChatProps> = ({
             </ReactMarkdown>
           </div>
 
-          {/* Citations */}
           {m.citations?.length ? (
             <div className="mt-2 flex gap-2 text-xs">
               {m.citations.map((c) => (
@@ -263,34 +268,29 @@ const Chat: React.FC<ChatProps> = ({
             </div>
           ) : null}
 
-          {/* Feedback bar (assistant messages only) */}
           {!isUser && (
             <div className="mt-3 flex items-center gap-3 text-xs">
               <button
                 className="px-2 py-1 border rounded"
                 onClick={() => sendReaction(m.id, "up")}
-                title="Thumbs up"
               >
                 👍 {m.reactions?.up ?? 0}
               </button>
               <button
                 className="px-2 py-1 border rounded"
                 onClick={() => sendReaction(m.id, "down")}
-                title="Thumbs down"
               >
                 👎 {m.reactions?.down ?? 0}
               </button>
               <button
                 className="px-2 py-1 border rounded"
                 onClick={() => setOpenCommentFor(open ? null : m.id)}
-                title="Add a comment"
               >
                 💬 {m.comments?.length ?? 0}
               </button>
             </div>
           )}
 
-          {/* Comment editor */}
           {!isUser && open && (
             <div className="mt-2">
               <textarea
@@ -327,9 +327,7 @@ const Chat: React.FC<ChatProps> = ({
     <div className="flex flex-col h-full">
       <div ref={scrollerRef} className="flex-1 overflow-y-auto pr-2">
         {messages.map(renderMessage)}
-        {isStreaming && (
-          <div className="text-xs text-gray-400 mt-2">Streaming…</div>
-        )}
+        {isStreaming && <div className="text-xs text-gray-400 mt-2">Streaming…</div>}
       </div>
 
       <form onSubmit={onSend} className="mt-3 flex gap-2">

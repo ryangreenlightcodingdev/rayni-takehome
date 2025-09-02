@@ -205,6 +205,44 @@ const handleOpenCitation = (docId: string, page?: number) => {
   const chosen = exact || fallbackPdf || uploadedDocs[0] || null;
   if (chosen) setSelectedDoc({ ...chosen, page });
 };
+// Types for saved chats
+type ChatSummary = { id: string; title: string; messageCount: number; lastUpdated: number | null };
+type ChatMsg = {
+  id: string; role: "user" | "assistant"; content: string;
+  citations?: { label: string; docId: string; page?: number }[];
+  reactions?: { up: number; down: number };
+  comments?: { id: string; text: string; createdAt: number }[];
+};
+
+const [chats, setChats] = useState<ChatSummary[]>([]);
+const [activeChatId, setActiveChatId] = useState<string | null>(null);
+const [activeChatMessages, setActiveChatMessages] = useState<ChatMsg[]>([]);
+
+// Load chat list once
+useEffect(() => {
+  fetch("http://localhost:4000/api/chats")
+    .then(r => r.json())
+    .then(setChats)
+    .catch(console.error);
+}, []);
+
+const createNewChat = async () => {
+  const res = await fetch("http://localhost:4000/api/chats", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: "New Chat" }),
+  });
+  const chat = await res.json();
+  setChats(prev => [{ id: chat.id, title: chat.title, messageCount: 0, lastUpdated: null }, ...prev]);
+  setActiveChatId(chat.id);
+  setActiveChatMessages([]); // empty canvas
+};
+
+const loadChat = async (id: string) => {
+  setActiveChatId(id);
+  const chat = await fetch(`http://localhost:4000/api/chats/${id}`).then(r => r.json());
+  setActiveChatMessages(chat.messages || []);
+};
 
   return (
     <div className="flex h-screen bg-gradient-to-b from-blue-100 to-white">
@@ -242,58 +280,43 @@ const handleOpenCitation = (docId: string, page?: number) => {
       {/* Center: Selector + Chat */}
       <div className="flex flex-col w-3/5 border-r">
         <div className="flex items-center justify-between p-3 border-b bg-white">
-          <div className="space-x-2">
-            <button className="px-3 py-1 bg-blue-600 text-white rounded">
-              New Chat
-            </button>
-            <select
-              value={selectedProject}
-              onChange={(e) => {
-                setSelectedProject(e.target.value);
-                setSelectedInstruments([]);
-              }}
-              className="border px-2 py-1 rounded"
-            >
-              <option value="">Select Project</option>
-              {projects.map((p) => (
-                <option key={p.id} value={p.id}>
-                  {p.name}
-                </option>
-              ))}
-            </select>
-            {selectedProject && (
-              <select
-                multiple
-                value={selectedInstruments}
-                onChange={(e) =>
-                  setSelectedInstruments(
-                    Array.from(e.target.selectedOptions, (opt) => opt.value)
-                  )
-                }
-                className="border px-2 py-1 rounded"
-              >
-                {instruments
-                  .filter((i) => i.projectId === selectedProject)
-                  .map((i) => (
-                    <option key={i.id} value={i.id}>
-                      {i.name}
-                    </option>
-                  ))}
-              </select>
-            )}
-          </div>
+        <div className="space-x-2">
+  <button onClick={createNewChat} className="px-3 py-1 bg-blue-600 text-white rounded">
+    New Chat
+  </button>
+
+  {/* Saved chats dropdown */}
+  <select
+    value={activeChatId || ""}
+    onChange={(e) => e.target.value && loadChat(e.target.value)}
+    className="border px-2 py-1 rounded"
+  >
+    <option value="">Open saved chat…</option>
+    {chats.map((c) => (
+      <option key={c.id} value={c.id}>
+        {c.title} {c.messageCount ? `(${c.messageCount})` : ""}
+      </option>
+    ))}
+  </select>
+
+  {/* …keep your Project / Instrument selectors here */}
+</div>
+
           <button className="px-3 py-1 border rounded text-sm">
             Save Chat as Note
           </button>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4">
-          <Chat
-            projectId={selectedProject}
-            instrumentIds={selectedInstruments}
-            docs={uploadedDocs}
-            onOpenCitation={handleOpenCitation}
-          />
+        <Chat
+  chatId={activeChatId || undefined}
+  initialMessages={activeChatMessages}
+  projectId={selectedProject}
+  instrumentIds={selectedInstruments}
+  docs={uploadedDocs}
+  onOpenCitation={handleOpenCitation}
+/>
+
         </div>
       </div>
 
