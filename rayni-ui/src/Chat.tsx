@@ -130,8 +130,35 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
         >
           {/* <div className="text-sm">{m.content}</div> */}
           <div className="prose prose-sm max-w-none">
-  <ReactMarkdown>{m.content}</ReactMarkdown>
+  <ReactMarkdown
+    components={{
+      // Render images responsively inside bubbles
+      img: ({ node, ...props }) => (
+        // eslint-disable-next-line jsx-a11y/alt-text
+        <img
+          {...props}
+          loading="lazy"
+          className="my-2 rounded-md max-w-full h-auto"
+        />
+      ),
+      // Make wide tables scroll horizontally instead of breaking layout
+      table: ({ node, ...props }) => (
+        <div className="my-2 overflow-x-auto">
+          <table {...props} className="table-auto border-collapse" />
+        </div>
+      ),
+      th: ({ node, ...props }) => (
+        <th {...props} className="border px-2 py-1 text-left" />
+      ),
+      td: ({ node, ...props }) => (
+        <td {...props} className="border px-2 py-1 align-top" />
+      ),
+    }}
+  >
+    {m.content}
+  </ReactMarkdown>
 </div>
+
           {/* Citations */}
           {m.citations?.length ? (
             <div className="mt-2 flex gap-2 text-xs">
