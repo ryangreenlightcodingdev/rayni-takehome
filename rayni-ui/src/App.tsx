@@ -243,6 +243,35 @@ const loadChat = async (id: string) => {
   const chat = await fetch(`http://localhost:4000/api/chats/${id}`).then(r => r.json());
   setActiveChatMessages(chat.messages || []);
 };
+// ---- Context selector helpers ----
+const instrumentsForSelectedProject = React.useMemo(
+  () =>
+    instruments.filter((i) =>
+      selectedProject ? i.projectId === selectedProject : true
+    ),
+  [instruments, selectedProject]
+);
+
+const handleProjectChange = (value: string) => {
+  setSelectedProject(value);
+  // keep only instruments that belong to the new project
+  setSelectedInstruments((prev) =>
+    prev.filter((id) =>
+      instruments.some((i) => i.id === id && i.projectId === value)
+    )
+  );
+};
+
+const toggleInstrument = (id: string) => {
+  setSelectedInstruments((prev) =>
+    prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+  );
+};
+
+const clearContext = () => {
+  setSelectedProject("");
+  setSelectedInstruments([]);
+};
 
   return (
     <div className="flex h-screen bg-gradient-to-b from-blue-100 to-white">
@@ -279,33 +308,93 @@ const loadChat = async (id: string) => {
 
       {/* Center: Selector + Chat */}
       <div className="flex flex-col w-3/5 border-r">
-        <div className="flex items-center justify-between p-3 border-b bg-white">
-        <div className="space-x-2">
-  <button onClick={createNewChat} className="px-3 py-1 bg-blue-600 text-white rounded">
-    New Chat
+      <div className="flex items-center justify-between p-3 border-b bg-white">
+  {/* LEFT: chat actions + saved chats */}
+  <div className="flex items-center gap-3">
+    <button onClick={createNewChat} className="px-3 py-1 bg-blue-600 text-white rounded">
+      New Chat
+    </button>
+
+    <select
+      value={activeChatId || ""}
+      onChange={(e) => e.target.value && loadChat(e.target.value)}
+      className="border px-2 py-1 rounded"
+      title="Open a saved chat"
+    >
+      <option value="">Open saved chat…</option>
+      {chats.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.title} {c.messageCount ? `(${c.messageCount})` : ""}
+        </option>
+      ))}
+    </select>
+  </div>
+
+  {/* MIDDLE: context selector */}
+  <div className="flex items-center gap-3">
+    {/* Project */}
+    <div className="flex items-center gap-2">
+      <label className="text-sm text-gray-600">Project</label>
+      <select
+        value={selectedProject}
+        onChange={(e) => handleProjectChange(e.target.value)}
+        className="border px-2 py-1 rounded min-w-[220px]"
+      >
+        <option value="">— Select project —</option>
+        {projects.map((p) => (
+          <option key={p.id} value={p.id}>
+            {p.name}
+          </option>
+        ))}
+      </select>
+    </div>
+
+    {/* Instruments (multi) */}
+    <div className="flex items-center gap-2">
+      <label className="text-sm text-gray-600">Instruments</label>
+      <div className="flex flex-wrap items-center gap-2 max-w-[520px]">
+        {instrumentsForSelectedProject.map((ins) => {
+          const active = selectedInstruments.includes(ins.id);
+          return (
+            <button
+              key={ins.id}
+              type="button"
+              onClick={() => toggleInstrument(ins.id)}
+              className={`px-2 py-1 rounded border text-sm ${
+                active
+                  ? "bg-blue-600 text-white border-blue-600"
+                  : "bg-white text-gray-700 hover:bg-gray-50"
+              }`}
+              title={active ? "Click to remove" : "Click to add"}
+            >
+              {ins.name}
+            </button>
+          );
+        })}
+        {/* empty-state */}
+        {!instrumentsForSelectedProject.length && (
+          <span className="text-xs text-gray-400">Pick a project first</span>
+        )}
+      </div>
+    </div>
+
+    {/* Clear */}
+    <button
+      type="button"
+      onClick={clearContext}
+      className="px-2 py-1 text-sm border rounded hover:bg-gray-50"
+      title="Clear project & instrument selection"
+    >
+      Clear
+    </button>
+  </div>
+
+  {/* RIGHT: save */}
+  <button className="px-3 py-1 border rounded text-sm">
+    Save Chat as Note
   </button>
-
-  {/* Saved chats dropdown */}
-  <select
-    value={activeChatId || ""}
-    onChange={(e) => e.target.value && loadChat(e.target.value)}
-    className="border px-2 py-1 rounded"
-  >
-    <option value="">Open saved chat…</option>
-    {chats.map((c) => (
-      <option key={c.id} value={c.id}>
-        {c.title} {c.messageCount ? `(${c.messageCount})` : ""}
-      </option>
-    ))}
-  </select>
-
-  {/* …keep your Project / Instrument selectors here */}
 </div>
 
-          <button className="px-3 py-1 border rounded text-sm">
-            Save Chat as Note
-          </button>
-        </div>
 
         <div className="flex-1 overflow-y-auto p-4">
         <Chat
