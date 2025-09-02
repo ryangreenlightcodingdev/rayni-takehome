@@ -11,9 +11,15 @@ app.use(cors());
 app.use(express.json());
 
 // -----------------------------
-// OAuth config (kept as-is)
+// OAuth config
 // -----------------------------
-const { GOOGLE_CLIENT_ID, GOOGLE_CLIENT_SECRET, GOOGLE_REDIRECT_URI } = process.env;
+const {
+  GOOGLE_CLIENT_ID,
+  GOOGLE_CLIENT_SECRET,
+  GOOGLE_REDIRECT_URI,
+  FRONTEND_URL = "http://localhost:3000", // fallback for local
+} = process.env;
+
 if (!GOOGLE_CLIENT_ID || !GOOGLE_CLIENT_SECRET || !GOOGLE_REDIRECT_URI) {
   console.warn("⚠️ Missing Google OAuth env vars. Check your .env file!");
 }
@@ -25,6 +31,9 @@ app.get("/auth/config", (req, res) => {
   });
 });
 
+// -----------------------------
+// OAuth callback
+// -----------------------------
 app.get("/oauth2callback", async (req, res) => {
   const code = req.query.code;
   console.log("✅ Received authorization code:", code);
@@ -39,7 +48,7 @@ app.get("/oauth2callback", async (req, res) => {
         code,
         client_id: GOOGLE_CLIENT_ID,
         client_secret: GOOGLE_CLIENT_SECRET,
-        redirect_uri: GOOGLE_REDIRECT_URI,
+        redirect_uri: GOOGLE_REDIRECT_URI, // must exactly match Cloud Console
         grant_type: "authorization_code",
       }),
     });
@@ -52,7 +61,7 @@ app.get("/oauth2callback", async (req, res) => {
     }
 
     // Redirect back to frontend with token in query
-    res.redirect(`https://rayni-takehome.vercel.app?access_token=${data.access_token}`);
+    res.redirect(`${FRONTEND_URL}?access_token=${data.access_token}`);
   } catch (err) {
     console.error("❌ Token exchange failed:", err);
     res.status(500).send("Token exchange failed");
@@ -240,7 +249,7 @@ app.post("/api/comments", (req, res) => {
 });
 
 // -----------------------------
-// Chat (non-streaming mock) — now supports primaryDocId
+// Chat (non-streaming mock)
 // -----------------------------
 app.post("/api/chat", (req, res) => {
   const { chatId, message, projectId, instrumentIds, docs, primaryDocId } = req.body;
@@ -283,7 +292,7 @@ app.post("/api/chat", (req, res) => {
 });
 
 // -----------------------------
-// Chat (SSE streaming; tokenized mock) — supports primaryDocId
+// Chat (SSE streaming mock)
 // -----------------------------
 app.get("/api/chat/stream", (req, res) => {
   const {
@@ -292,16 +301,14 @@ app.get("/api/chat/stream", (req, res) => {
     projectId,
     instrumentIds,
     docs,
-    primaryDocId, // 👈 passed from frontend to bind citations to the visible doc
+    primaryDocId,
   } = req.query;
 
-  // SSE headers
   res.setHeader("Content-Type", "text/event-stream");
   res.setHeader("Cache-Control", "no-cache");
   res.setHeader("Connection", "keep-alive");
   res.flushHeaders?.();
 
-  // Ensure chat + user message exist
   const chat =
     db.chats.find((c) => c.id === chatId) ||
     (() => {
@@ -313,11 +320,10 @@ app.get("/api/chat/stream", (req, res) => {
   const userMsg = { id: uuid(), role: "user", content: String(message), createdAt: Date.now() };
   chat.messages.push(userMsg);
 
-  // Mock assistant content + citations
   const full =
     "Checking pump seals and lines can fix low HPLC signal. Also verify mobile phase mixing and recalibrate the detector.";
 
-  const targetDocId = String(primaryDocId || db.docs[0]?.id || "d1"); // 👈 bind to user's doc
+  const targetDocId = String(primaryDocId || db.docs[0]?.id || "d1");
   const citations = [
     { label: "[1]", docId: targetDocId, page: 2 },
     { label: "[2]", docId: targetDocId, page: 5 },
