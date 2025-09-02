@@ -53,4 +53,13 @@
     gap: 10px; /* space between buttons */
     max-width: 300px; /* keeps it neat */
   }
+  /* Force instruments row into a single line */
+/* Instruments row styling */
+div:has(> button[title]) {
+    display: flex;
+    flex-wrap: wrap;     /* ✅ wrap to new row if needed */
+    gap: 10px;           /* space between buttons */
+    justify-content: flex-start;
+    align-items: center;
+  }
   
