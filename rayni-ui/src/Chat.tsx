@@ -1,6 +1,8 @@
 // src/Chat.tsx
 import React, { useCallback, useEffect, useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
+
 
 type Citation = { label: string; docId: string; page?: number };
 type Reactions = { up: number; down: number };
@@ -223,31 +225,28 @@ const Chat: React.FC<ChatProps> = ({
           } whitespace-pre-wrap`}
         >
           <div className="prose prose-sm max-w-none">
-            <ReactMarkdown
-              components={{
-                img: ({ node, ...props }) => (
-                  // eslint-disable-next-line jsx-a11y/alt-text
-                  <img
-                    {...props}
-                    loading="lazy"
-                    className="my-2 rounded-md max-w-full h-auto"
-                  />
-                ),
-                table: ({ node, ...props }) => (
-                  <div className="my-2 overflow-x-auto">
-                    <table {...props} className="table-auto border-collapse" />
-                  </div>
-                ),
-                th: ({ node, ...props }) => (
-                  <th {...props} className="border px-2 py-1 text-left" />
-                ),
-                td: ({ node, ...props }) => (
-                  <td {...props} className="border px-2 py-1 align-top" />
-                ),
-              }}
-            >
-              {m.content}
-            </ReactMarkdown>
+          <ReactMarkdown
+  remarkPlugins={[remarkGfm]}
+  components={{
+    img: ({ node, ...props }) => (
+      // eslint-disable-next-line jsx-a11y/alt-text
+      <img {...props} loading="lazy" className="my-2 rounded-md max-w-full h-auto" />
+    ),
+    table: ({ node, ...props }) => (
+      <div className="my-2 overflow-x-auto">
+        <table {...props} className="table-auto border-collapse w-full" />
+      </div>
+    ),
+    th: ({ node, ...props }) => (
+      <th {...props} className="border px-2 py-1 text-left align-top" />
+    ),
+    td: ({ node, ...props }) => (
+      <td {...props} className="border px-2 py-1 align-top" />
+    ),
+  }}
+>
+  {m.content}
+</ReactMarkdown>
           </div>
 
           {m.citations?.length ? (
