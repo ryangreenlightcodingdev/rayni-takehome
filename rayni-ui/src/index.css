@@ -1,3 +1,49 @@
 @tailwind base;
 @tailwind components;
 @tailwind utilities;
+
+/* ---------- Design tokens ---------- */
+:root{
+  --btn-h: 36px;
+  --radius: 12px;
+}
+
+/* ---------- Reusable button styles ---------- */
+.btn { @apply inline-flex items-center justify-center px-3 py-2 rounded-xl border text-sm transition; height: var(--btn-h); }
+.btn-primary { @apply bg-blue-600 text-white border-blue-600 hover:bg-blue-700; }
+.btn-ghost   { @apply bg-white text-gray-700 border-gray-300 hover:bg-gray-50; }
+.btn-soft    { @apply bg-blue-50 text-blue-700 border-blue-200 hover:bg-blue-100; }
+
+/* ---------- Top bar as 3 columns ---------- */
+.topbar { @apply sticky top-0 z-10 bg-white border-b; }
+.topbar-inner { @apply grid grid-cols-3 gap-4 items-center px-4 py-3; }
+.topbar-left  { @apply flex items-center gap-2; }
+.topbar-center{ @apply flex items-center justify-center gap-4; }
+.topbar-right { @apply flex items-center justify-end gap-2; }
+
+/* Normalize native controls in the topbar */
+.topbar select { @apply btn btn-ghost pr-8; }
+
+/* Chips (instruments) */
+.chips { @apply flex flex-wrap gap-2 max-w-[520px]; }
+.chip  { @apply inline-flex items-center gap-2 px-2.5 py-1 rounded-full border text-xs bg-white text-gray-700 border-gray-300 hover:bg-gray-50; }
+.chip-active { @apply bg-blue-600 text-white border-blue-600; }
+
+/* ---------- Sources list polish ---------- */
+.sources li { @apply p-2 rounded-lg border hover:bg-gray-50 cursor-pointer transition; }
+.sources .meta { @apply text-xs text-gray-500; }
+
+/* ---------- Chat bubbles + markdown ---------- */
+.chat-row { @apply flex my-3; }
+.chat-bubble { @apply max-w-[75%] rounded-2xl p-4 border bg-white; }
+.chat-bubble.user { @apply bg-blue-600 text-white border-blue-600; }
+.chat-md { @apply prose prose-sm max-w-none; }
+.chat-md-invert :where(h1,h2,h3,h4,h5,h6, p, li, a, code) { @apply text-white; }
+.chat-md table { @apply w-full border border-gray-200 rounded-lg overflow-hidden block; }
+.chat-md th, .chat-md td { @apply border border-gray-200 px-2 py-1 text-left align-top; }
+.chat-md img { @apply rounded-md max-w-full h-auto my-2; }
+
+/* Streaming chips */
+.stream-row { @apply flex gap-2 items-center text-xs mt-1 mb-2; }
+.stream-chip { @apply bg-gray-100 border border-gray-200 rounded-full px-2 py-0.5; animation: pulse 1.6s ease-in-out infinite; }
+@keyframes pulse { 0%,100%{opacity:.6} 50%{opacity:1} }
