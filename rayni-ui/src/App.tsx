@@ -195,11 +195,16 @@ const App: React.FC = () => {
     setUploadedDocs((prev) => [...prev, ...localDocs]);
   };
 
-  // ---------- Citation Handler ----------
-  const handleOpenCitation = (docId: string, page?: number) => {
-    const doc = uploadedDocs.find((d) => d.id === docId);
-    if (doc) setSelectedDoc({ ...doc, page });
-  };
+ // ---------- Citation Handler ----------
+const handleOpenCitation = (docId: string, page?: number) => {
+  const exact = uploadedDocs.find((d) => d.id === docId);
+  const fallbackPdf =
+    uploadedDocs.find(
+      (d) => d.mimeType === "application/pdf" || /\.pdf$/i.test(d.name)
+    ) || null;
+  const chosen = exact || fallbackPdf || uploadedDocs[0] || null;
+  if (chosen) setSelectedDoc({ ...chosen, page });
+};
 
   return (
     <div className="flex h-screen bg-gradient-to-b from-blue-100 to-white">

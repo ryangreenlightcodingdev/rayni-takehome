@@ -14,11 +14,17 @@ type Message = {
 type ChatProps = {
   projectId: string;
   instrumentIds: string[];
-  docs: Array<{ id: string; name: string }>;
+  // include mimeType so we can choose a PDF for citations
+  docs: Array<{ id: string; name: string; mimeType?: string }>;
   onOpenCitation: (docId: string, page?: number) => void;
 };
 
-const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitation }) => {
+const Chat: React.FC<ChatProps> = ({
+  projectId,
+  instrumentIds,
+  docs,
+  onOpenCitation,
+}) => {
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [isStreaming, setIsStreaming] = useState(false);
@@ -39,19 +45,36 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
   const startStream = useCallback(
     (prompt: string) => {
       // 1) push user message
-      const userMsg: Message = { id: crypto.randomUUID(), role: "user", content: prompt };
+      const userMsg: Message = {
+        id: crypto.randomUUID(),
+        role: "user",
+        content: prompt,
+      };
       setMessages((m) => [...m, userMsg]);
 
       // 2) create an empty assistant placeholder to paint deltas into
       const placeholderId = crypto.randomUUID();
-      const placeholder: Message = { id: placeholderId, role: "assistant", content: "" };
+      const placeholder: Message = {
+        id: placeholderId,
+        role: "assistant",
+        content: "",
+      };
       setMessages((m) => [...m, placeholder]);
 
       setIsStreaming(true);
       streamBufferRef.current = "";
 
-      // Pick the first doc as the "primary" doc for citations
-      const primaryDocId = docs[0]?.id || "";
+      // Prefer a PDF doc for citations; fall back to the first doc
+      const pickPrimaryDocId = () => {
+        const pdf =
+          docs.find(
+            (d) =>
+              (d.mimeType && d.mimeType.includes("pdf")) ||
+              /\.pdf$/i.test(d.name)
+          ) || null;
+        return pdf?.id || docs[0]?.id || "";
+      };
+      const primaryDocId = pickPrimaryDocId();
 
       // Build query string for SSE
       const q = new URLSearchParams({
@@ -60,10 +83,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
         projectId: projectId || "",
         instrumentIds: instrumentIds.join(","),
         docs: String(docs.length),
-        primaryDocId, // 👈 ensures backend ties citations to the correct doc
+        primaryDocId, // ensures backend ties citations to the correct PDF
       });
 
-      const es = new EventSource(`http://localhost:4000/api/chat/stream?${q.toString()}`);
+      const es = new EventSource(
+        `http://localhost:4000/api/chat/stream?${q.toString()}`
+      );
       sourceRef.current = es;
 
       es.addEventListener("chunk", (ev: MessageEvent) => {
@@ -73,10 +98,14 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
           // paint into the last assistant message
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === placeholderId ? { ...m, content: streamBufferRef.current } : m
+              m.id === placeholderId
+                ? { ...m, content: streamBufferRef.current }
+                : m
             )
           );
-        } catch {}
+        } catch (e) {
+          console.error("chunk parse error", e);
+        }
       });
 
       es.addEventListener("done", (ev: MessageEvent) => {
@@ -86,7 +115,8 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
           setMessages((prev) =>
             prev.map((m) => (m.id === placeholderId ? { ...message } : m))
           );
-        } catch {
+        } catch (e) {
+          console.error("done parse error", e);
           // fallback: finalize with whatever we buffered
           setMessages((prev) =>
             prev.map((m) =>
@@ -129,7 +159,10 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
   const renderMessage = (m: Message) => {
     const isUser = m.role === "user";
     return (
-      <div key={m.id} className={`flex ${isUser ? "justify-end" : "justify-start"} my-2`}>
+      <div
+        key={m.id}
+        className={`flex ${isUser ? "justify-end" : "justify-start"} my-2`}
+      >
         <div
           className={`max-w-[75%] rounded p-3 ${
             isUser ? "bg-blue-100" : "bg-gray-100"
@@ -172,9 +205,12 @@ const Chat: React.FC<ChatProps> = ({ projectId, instrumentIds, docs, onOpenCitat
                   key={c.label}
                   className="underline hover:no-underline"
                   onClick={() => onOpenCitation(c.docId, c.page)}
-                  title={`Open ${c.label} (${c.docId}${c.page ? ` p.${c.page}` : ""})`}
+                  title={`Open ${c.label} (${c.docId}${
+                    c.page ? ` p.${c.page}` : ""
+                  })`}
                 >
                   {c.label}
+                  {c.page ? ` p.${c.page}` : ""}
                 </button>
               ))}
             </div>
