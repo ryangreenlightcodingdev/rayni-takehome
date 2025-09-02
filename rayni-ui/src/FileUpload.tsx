@@ -1,6 +1,6 @@
 // src/FileUpload.tsx
 // import React, { useCallback,   useRef, useState } from "react";
-import React, { useState } from "react";
+import React, { useState, useRef, useCallback } from "react";
 
 
 type FileStatus = "queued" | "uploaded" | "indexed";
